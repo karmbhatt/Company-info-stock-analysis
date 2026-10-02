@@ -1,0 +1,7 @@
+# Downloaded / generated data stays out of git
+data/raw/
+data/processed/
+data/vectorstore/
+__pycache__/
+.venv/
+.env
