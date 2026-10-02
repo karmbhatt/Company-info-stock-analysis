@@ -50,15 +50,38 @@ def download(url: str) -> bytes:
     raise RuntimeError(f"download failed after {RETRIES} attempts: {last_err}")
 
 
+def write_meta(meta_path, company: str, doc: dict, source_url: str, content: bytes):
+    meta = {
+        "company": company,
+        **{k: v for k, v in doc.items() if k not in ("url", "source_page")},
+        "source_url": source_url,
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "bytes": len(content),
+        "downloaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
 def fetch_one(company: str, doc: dict, force: bool, dry_run: bool) -> str:
     doc_id = doc["id"]
     url = (doc.get("url") or "").strip()
-    if not url:
-        return "needs_url"
-
     out_dir = RAW_DIR / doc["document_type"]
     pdf_path = out_dir / f"{doc_id}.pdf"
     meta_path = out_dir / f"{doc_id}.meta.json"
+
+    if not url:
+        # No download link: maybe the PDF was saved by hand into the right folder.
+        if pdf_path.exists():
+            if meta_path.exists() and not force:
+                return "exists"
+            if dry_run:
+                return "would_register"
+            content = pdf_path.read_bytes()
+            if not content.startswith(b"%PDF"):
+                raise RuntimeError("file is not a PDF")
+            write_meta(meta_path, company, doc, doc.get("source_page", ""), content)
+            return "registered"
+        return "needs_url"
 
     if pdf_path.exists() and not force:
         return "exists"
@@ -71,15 +94,7 @@ def fetch_one(company: str, doc: dict, force: bool, dry_run: bool) -> str:
 
     out_dir.mkdir(parents=True, exist_ok=True)
     pdf_path.write_bytes(content)
-    meta = {
-        "company": company,
-        **{k: v for k, v in doc.items() if k != "url"},
-        "source_url": url,
-        "sha256": hashlib.sha256(content).hexdigest(),
-        "bytes": len(content),
-        "downloaded_at": datetime.now(timezone.utc).isoformat(),
-    }
-    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    write_meta(meta_path, company, doc, url, content)
     return "downloaded"
 
 

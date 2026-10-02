@@ -11,6 +11,7 @@ documents:
     fiscal_year: FY2026
     title: TCS Integrated Annual Report 2025-26
     url: ""   # TODO: copy the "Download Report" link from https://www.ar.tcs.com/
+    source_page: "https://www.ar.tcs.com/"
 
   - id: tcs_annual_report_fy2025
     document_type: annual_report
@@ -33,6 +34,19 @@ documents:
     title: TCS Financial Results, quarter ended June 30, 2025
     url: "https://www.tcs.com/content/dam/tcs/pdf/discover-tcs/investor-relations/corporate-actions/2025-26/financial-results-qe-jun-30-2025.pdf"
 
+  - id: tcs_earnings_call_q1_fy27
+    document_type: earnings_call
+    fiscal_year: FY2027
+    period: Q1 FY27
+    title: TCS Q1 FY27 Earnings Conference Call transcript (July 9, 2026)
+    url: "https://www.tcs.com/content/dam/tcs/investor-relations/financial-statements/2026-27/q1/Management%20Commentary/Transcript%20of%20the%20Q1%202026-27%20Earnings%20Conference%20Call%20held%20on%20Jul%209,%202026.pdf"
+
+  - id: tcs_press_release_q1_fy27_inr
+    document_type: quarterly_results
+    fiscal_year: FY2027
+    period: Q1 FY27
+    title: TCS Q1 FY27 results press release (INR)
+    url: "https://www.tcs.com/content/dam/tcs/investor-relations/financial-statements/2026-27/q1/IND%20AS/Press%20Release%20-%20INR.pdf"
   # ---- Still to add (find links on the TCS IR site) ------------------------
   # - Latest quarter (Q1 FY27) results
   # - Latest earnings-call transcript          -> document_type: earnings_call
