@@ -5,3 +5,4 @@ data/vectorstore/
 __pycache__/
 .venv/
 .env
+scratch/
