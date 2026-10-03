@@ -9,10 +9,16 @@ Two reading strategies, chosen page by page:
             columns of the page, so paragraphs stay intact. (The row method
             would glue the columns of a multi-column page together line by line.)
 
+Two-page spreads: some PDFs (e.g. the FY2025 report) put two printed pages side by
+side on one very wide PDF page. We cut such a page down the middle and treat the left
+and right halves as separate pages, otherwise the row method would glue the left
+page's lines to the right page's lines.
+
 How a page is classified (both numbers were tuned on real TCS pages):
 1. numeric share: if few words are figures, it is prose  -> plain.
-2. column score: many figures AND most long rows split into two chunks of ordinary
-   words (two prose columns)  -> plain. Otherwise it is a table -> rows.
+2. numeric share of 30% or more: it is a table  -> rows.
+3. in between: if most long rows split into two chunks of ordinary words (two prose
+   columns) -> plain. Otherwise it is a table -> rows.
 """
 import json
 import re
@@ -26,8 +32,10 @@ PROCESSED_DIR = ROOT / "data" / "processed" / "tcs"
 
 ROW_TOLERANCE = 3         # PDF points; words closer than this vertically share a row
 TABLE_THRESHOLD = 0.18    # numeric share at or above which a page *might* be a table
+STRONG_TABLE = 0.30       # numeric share at or above which a page is a table, no matter what
 COLUMN_THRESHOLD = 0.25   # column score at or above which a page is prose in columns
 MIN_GAP = 12              # PDF points; a gap this wide is a column gutter, not a space
+SPREAD_RATIO = 1.4        # a PDF page wider than 1.4 x its height is a two-page spread
 
 # a figure: 1,234  2,55,324  (70)  12.5%  or a lone dash meaning "nil"
 NUMBER = re.compile(r"^[\(\-]?\d[\d,\.]*\)?%?$|^[-–—]$")
@@ -42,9 +50,20 @@ def numeric_ratio(text: str) -> float:
     return sum(bool(NUMBER.match(w)) for w in words) / len(words)
 
 
-def rows_of_words(page) -> list[list]:
-    """Group the page's words into rows (same height), each sorted left to right."""
-    words = sorted(page.get_text("words"), key=lambda w: (w[1] + w[3]) / 2)
+def page_units(page):
+    """Yield (clip, side) for each printed page found on this PDF page."""
+    r = page.rect
+    if r.width > SPREAD_RATIO * r.height:               # a two-page spread
+        mid = r.x0 + r.width / 2
+        yield pymupdf.Rect(r.x0, r.y0, mid, r.y1), "left"
+        yield pymupdf.Rect(mid, r.y0, r.x1, r.y1), "right"
+    else:
+        yield r, None
+
+
+def rows_of_words(page, clip) -> list[list]:
+    """Group the words inside `clip` into rows (same height), each sorted left to right."""
+    words = sorted(page.get_text("words", clip=clip), key=lambda w: (w[1] + w[3]) / 2)
     rows = []
     for w in words:
         y = (w[1] + w[3]) / 2
@@ -55,14 +74,14 @@ def rows_of_words(page) -> list[list]:
     return [sorted(ws, key=lambda w: w[0]) for _, ws in rows]
 
 
-def rows_text(page) -> str:
-    return "\n".join(" ".join(w[4] for w in row) for row in rows_of_words(page))
+def rows_text(page, clip) -> str:
+    return "\n".join(" ".join(w[4] for w in row) for row in rows_of_words(page, clip))
 
 
-def column_score(page) -> float:
+def column_score(page, clip) -> float:
     """Share of long rows that split into two chunks of real words (prose columns)."""
     long_rows = two_prose = 0
-    for row in rows_of_words(page):
+    for row in rows_of_words(page, clip):
         if len(row) < 8:
             continue
         long_rows += 1
@@ -76,21 +95,25 @@ def column_score(page) -> float:
     return two_prose / long_rows if long_rows else 0.0
 
 
-def page_to_text(page) -> tuple[str, str]:
-    """Return (text, method) for one page."""
-    plain = page.get_text()
-    if numeric_ratio(plain) >= TABLE_THRESHOLD and column_score(page) < COLUMN_THRESHOLD:
-        return rows_text(page), "rows"
+def page_to_text(page, clip) -> tuple[str, str]:
+    """Return (text, method) for one printed page (the part of `page` inside `clip`)."""
+    plain = page.get_text(clip=clip)
+    share = numeric_ratio(plain)
+    if share >= STRONG_TABLE or (share >= TABLE_THRESHOLD and column_score(page, clip) < COLUMN_THRESHOLD):
+        return rows_text(page, clip), "rows"
     return plain, "plain"
 
 
 def extract_pdf(pdf_path: Path) -> dict:
     meta = json.loads(pdf_path.with_suffix(".meta.json").read_text(encoding="utf-8"))
-    pages = []
+    pages, page_no = [], 0
     with pymupdf.open(pdf_path) as doc:
-        for number, page in enumerate(doc, start=1):  # page numbers start at 1
-            text, method = page_to_text(page)
-            pages.append({"page": number, "method": method, "text": text})
+        for pdf_page_no, page in enumerate(doc, start=1):
+            for clip, side in page_units(page):
+                page_no += 1   # a spread counts as two pages (printed page numbers can still differ)
+                text, method = page_to_text(page, clip)
+                pages.append({"page": page_no, "pdf_page": pdf_page_no, "side": side,
+                              "method": method, "text": text})
     return {**meta, "pages": pages}
 
 
